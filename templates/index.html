@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capital Rotation — Sector Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;0,900;1,500;1,700&family=Spectral:ital,wght@0,300;0,400;0,500;1,300;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#F5F1E8; --cream2:#EFE9DB; --ink:#1A1714; --ink-soft:#5A5246;
+    --accent:#FF6B00; --out:#B23A1E; --in:#2E7D4F; --rule:#D8CEB8;
+    --serif:'Playfair Display',serif; --body:'Spectral',serif; --mono:'IBM Plex Mono',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{background:var(--cream);color:var(--ink);font-family:var(--body);
+    background-image:radial-gradient(circle at 50% 0%, rgba(255,107,0,0.04), transparent 55%);}
+  ::selection{background:var(--accent);color:var(--cream);}
+
+  .sheet{max-width:980px;margin:0 auto;padding:0 40px 40px;}
+
+  .masthead{padding:34px 0 0;}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:5px;
+    text-transform:uppercase;color:var(--accent);font-weight:600;}
+  .headline{font-family:var(--serif);font-weight:900;font-size:clamp(40px,7vw,80px);
+    line-height:0.92;letter-spacing:-2px;margin:10px 0 6px;}
+  .headline em{font-style:italic;color:var(--accent);font-weight:700;}
+  .dek{font-family:var(--body);font-style:italic;font-size:clamp(15px,2vw,19px);
+    color:var(--ink-soft);font-weight:300;max-width:540px;line-height:1.4;}
+
+  .toprule{height:3px;background:var(--ink);margin:20px 0 0;}
+  .byline{display:flex;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;gap:14px;padding:10px 0 0;
+    font-family:var(--mono);font-size:11px;letter-spacing:1.5px;
+    text-transform:uppercase;color:var(--ink-soft);}
+  .byline .l{display:flex;align-items:center;gap:18px;}
+  .stat{display:flex;align-items:center;gap:7px;}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-soft);}
+  .dot.live{background:var(--in);animation:pulse 2s infinite;}
+  .dot.err{background:var(--out);}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  .tabs{display:flex;gap:2px;}
+  .tab{font-family:var(--mono);font-size:11px;letter-spacing:2px;font-weight:500;
+    background:none;border:none;color:var(--ink-soft);cursor:pointer;
+    padding:5px 12px;border-bottom:2px solid transparent;transition:all .2s;}
+  .tab:hover{color:var(--ink);}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+  .funnel-cap{display:flex;align-items:baseline;gap:16px;margin:26px 0 10px;}
+  .funnel-cap .no{font-family:var(--serif);font-weight:900;font-style:italic;
+    font-size:26px;color:var(--accent);}
+  .funnel-cap h2{font-family:var(--serif);font-weight:700;font-size:clamp(22px,3.4vw,34px);
+    letter-spacing:-0.5px;}
+  .funnel-cap .sub{font-family:var(--mono);font-size:10px;letter-spacing:3px;
+    text-transform:uppercase;color:var(--ink-soft);margin-left:auto;align-self:center;}
+
+  #funnel{width:100%;display:block;}
+  #funnel .lyr{opacity:0;animation:rise .5s cubic-bezier(.2,.7,.2,1) forwards;}
+  @keyframes rise{to{opacity:1;}}
+
+  .state{display:none;padding:70px 0;text-align:center;}
+  .state.on{display:block;}
+  .state .big{font-family:var(--serif);font-style:italic;font-weight:500;
+    font-size:32px;color:var(--ink-soft);}
+  .state .sm{font-family:var(--mono);font-size:11px;letter-spacing:2px;
+    text-transform:uppercase;color:var(--ink-soft);margin-top:12px;}
+  .state.err .big{color:var(--out);}
+  #content{display:none;}
+  #content.on{display:block;}
+
+  .legend{display:flex;align-items:center;gap:26px;padding-top:10px;flex-wrap:wrap;
+    font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink-soft);}
+  .legend .it{display:flex;align-items:center;gap:8px;}
+  .legend .sw{width:11px;height:11px;}
+
+  .colophon{margin-top:26px;padding-top:14px;border-top:3px solid var(--ink);
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;
+    font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-soft);}
+  .colophon .mk{color:var(--accent);font-weight:600;}
+
+  @media(max-width:560px){ .sheet{padding:0 22px 40px;} }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="masthead">
+    <div class="kicker">US Sector ETF Flow · The Rotation Report</div>
+    <h1 class="headline">Capital <em>Rotation</em></h1>
+    <p class="dek">Where money exits, and where it arrives. The eleven S&amp;P sectors, ranked top to bottom by the direction of flow.</p>
+    <div class="toprule"></div>
+    <div class="byline">
+      <div class="l">
+        <span class="stat"><span class="dot" id="dot"></span><span id="state">Connecting</span></span>
+        <span id="updated">—</span>
+      </div>
+      <div class="tabs">
+        <button class="tab" data-p="1D" onclick="setPeriod('1D')">1 Day</button>
+        <button class="tab" data-p="1W" onclick="setPeriod('1W')">1 Week</button>
+        <button class="tab active" data-p="1M" onclick="setPeriod('1M')">1 Month</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="state loading on" id="loading">
+    <div class="big">Reading the market…</div>
+    <div class="sm">Fetching sector data</div>
+  </div>
+  <div class="state err" id="error">
+    <div class="big">Data not available</div>
+    <div class="sm">The report will refresh automatically</div>
+  </div>
+
+  <div id="content">
+    <div class="funnel-cap">
+      <span class="no">§</span>
+      <h2>The Rotation Funnel</h2>
+      <span class="sub" id="period-tag">1 Month</span>
+    </div>
+    <svg id="funnel" viewBox="0 0 900 506" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend">
+      <div class="it"><span class="sw" style="background:var(--in)"></span> Capital Inflow</div>
+      <div class="it"><span class="sw" style="background:var(--out)"></span> Capital Outflow</div>
+      <div class="it" style="margin-left:auto;">Ranked Strongest → Weakest</div>
+    </div>
+  </div>
+
+  <div class="colophon">
+    <span>Source · Yahoo Finance</span>
+    <span>Auto-refresh · 15 min</span>
+    <span class="mk">oT</span>
+  </div>
+
+</div>
+
+<script>
+const PLABEL = {"1D":"1 Day","1W":"1 Week","1M":"1 Month"};
+let period = "1M";
+let cache = {"1D":[],"1W":[],"1M":[]};
+
+function show(which){
+  document.getElementById("loading").classList.toggle("on", which==="loading");
+  document.getElementById("error").classList.toggle("on", which==="error");
+  document.getElementById("content").classList.toggle("on", which==="content");
+}
+function setState(kind){
+  const dot=document.getElementById("dot"), st=document.getElementById("state");
+  dot.className="dot"+(kind==="live"?" live":kind==="err"?" err":"");
+  st.textContent=kind==="live"?"Live":kind==="err"?"Error":"Connecting";
+}
+function setPeriod(p){
+  period=p;
+  document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.p===p));
+  document.getElementById("period-tag").textContent=PLABEL[p];
+  if(cache[p] && cache[p].length) draw(cache[p]);
+}
+
+async function poll(){
+  try{
+    const r=await fetch("/api/data",{cache:"no-store"});
+    const d=await r.json();
+    if(d.status==="live" && d.periods){
+      cache=d.periods; setState("live");
+      if(d.updated) document.getElementById("updated").textContent="Updated "+d.updated;
+      draw(cache[period]||[]); show("content");
+    }else if(d.status==="error"){ setState("err"); show("error"); }
+    else{ setState("connecting"); show("loading"); }
+  }catch(e){ setState("err"); show("error"); }
+}
+
+const NS="http://www.w3.org/2000/svg";
+function el(tag,attrs){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+function txt(svg,x,y,t,fill,size,weight,family,anchor){
+  const e=el("text",{x,y,fill,"font-size":size,"font-weight":weight,
+    "font-family":family,"text-anchor":anchor||"middle","dominant-baseline":"middle"});
+  e.textContent=t; svg.appendChild(e);
+}
+
+function draw(data){
+  const svg=document.getElementById("funnel"); svg.innerHTML="";
+  if(!data||!data.length) return;
+  const sorted=[...data].sort((a,b)=>b.pct-a.pct);
+  const W=900, top0=8, levels=sorted.length;
+  const lh=44, H=top0+levels*lh+6;
+  const cx=W/2, maxHW=W*0.47, minHW=W*0.055;
+
+  sorted.forEach((it,i)=>{
+    const ratio=1-i/levels, hw=minHW+(maxHW-minHW)*ratio;
+    const nratio=1-(i+1)/levels, nhw=minHW+(maxHW-minHW)*nratio;
+    const yt=top0+i*lh, yb=yt+lh, my=(yt+yb)/2, pct=it.pct;
+
+    let stroke, fill;
+    if(pct>0){const t=Math.min(pct/20,1);
+      stroke="#2E7D4F"; fill=`rgba(46,125,79,${(0.07+t*0.20).toFixed(3)})`;}
+    else if(pct<0){const t=Math.min(Math.abs(pct)/8,1);
+      stroke="#B23A1E"; fill=`rgba(178,58,30,${(0.07+t*0.20).toFixed(3)})`;}
+    else{stroke="#5A5246"; fill="rgba(90,82,70,0.08)";}
+
+    const g=el("g",{class:"lyr",style:`animation-delay:${(i*0.05).toFixed(2)}s`});
+    const pts=`${cx-hw},${yt} ${cx+hw},${yt} ${cx+nhw},${yb} ${cx-nhw},${yb}`;
+    g.appendChild(el("polygon",{points:pts,fill:fill,stroke:stroke,"stroke-width":"1.2"}));
+
+    const ps=pct>=0?`+${pct.toFixed(1)}%`:`${pct.toFixed(1)}%`;
+    const pcol=pct>=0?"#2E7D4F":"#B23A1E";
+
+    if(hw>150){
+      txt(g,cx-hw*0.72,my,roman(i+1),"#9A8F78",17,500,"'Playfair Display',serif","middle");
+      txt(g,cx-hw*0.50,my,it.ticker,"#1A1714",17,600,"'IBM Plex Mono',monospace","start");
+      txt(g,cx-hw*0.05,my,it.name,"#5A5246",15,400,"'Spectral',serif","start");
+      txt(g,cx+hw*0.78,my,ps,pcol,30,700,"'Playfair Display',serif","end");
+    }else if(hw>85){
+      txt(g,cx-hw*0.55,my,it.ticker,"#1A1714",14,600,"'IBM Plex Mono',monospace","start");
+      txt(g,cx+hw*0.72,my,ps,pcol,22,700,"'Playfair Display',serif","end");
+    }else{
+      txt(g,cx,my,`${it.ticker}  ${ps}`,pcol,13,600,"'IBM Plex Mono',monospace","middle");
+    }
+    svg.appendChild(g);
+  });
+
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+}
+
+function roman(n){const m=[["X",10],["IX",9],["V",5],["IV",4],["I",1]];let s="";for(const[r,v]of m){while(n>=v){s+=r;n-=v;}}return s;}
+
+poll();
+setInterval(poll, 60000);
+</script>
+</body>
+</html>
