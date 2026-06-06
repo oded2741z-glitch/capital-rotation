@@ -4,6 +4,9 @@ import json
 import threading
 import datetime
 import urllib.request
+import urllib.error
+import urllib.parse
+import http.cookiejar
 
 from flask import Flask, render_template, jsonify
 
@@ -45,13 +48,45 @@ _state = {
 _started = False
 
 
-def _fetch_raw(ticker):
+def _log(msg):
+    print(f"[ROTATION] {msg}", flush=True)
+
+
+def _build_session():
+    cj = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    opener.addheaders = [
+        ("User-Agent", USER_AGENT),
+        ("Accept", "text/html,application/json,*/*"),
+        ("Accept-Language", "en-US,en;q=0.9"),
+    ]
+    for u in ("https://fc.yahoo.com", "https://finance.yahoo.com"):
+        try:
+            opener.open(u, timeout=15).read()
+        except Exception:
+            pass
+    crumb = None
+    try:
+        r = opener.open("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=15)
+        crumb = r.read().decode("utf-8").strip()
+    except Exception as e:
+        _log(f"crumb request failed: {type(e).__name__}: {e}")
+    if crumb and "<" not in crumb and len(crumb) < 40:
+        _log("crumb acquired OK")
+        return opener, crumb
+    _log("no valid crumb; proceeding without")
+    return opener, None
+
+
+def _fetch_raw(ticker, opener, crumb):
     path = f"/v8/finance/chart/{ticker}?range=3mo&interval=1d"
+    if crumb:
+        path += "&crumb=" + urllib.parse.quote(crumb)
+    last_err = None
     for host in YAHOO_HOSTS:
         url = host + path
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with opener.open(url, timeout=15) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
             result = payload["chart"]["result"][0]
             timestamps = result["timestamp"]
@@ -69,8 +104,12 @@ def _fetch_raw(ticker):
                 closes.append((d, float(c)))
             if len(closes) >= 2:
                 return closes
-        except Exception:
-            continue
+            last_err = "no usable closes in response"
+        except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code} from {host}"
+        except Exception as e:
+            last_err = f"{type(e).__name__}: {e} ({host})"
+    _log(f"{ticker} fetch failed -> {last_err}")
     return None
 
 
@@ -95,9 +134,15 @@ def _pct_from_closes(closes, days):
 
 
 def _refresh_once():
+    _log("refresh cycle started")
+    opener, crumb = _build_session()
     raws = {}
+    ok_count = 0
     for ticker, name in SECTORS:
-        raws[ticker] = _fetch_raw(ticker)
+        raws[ticker] = _fetch_raw(ticker, opener, crumb)
+        if raws[ticker]:
+            ok_count += 1
+    _log(f"fetched {ok_count}/{len(SECTORS)} tickers")
 
     new_periods = {"1D": [], "1W": [], "1M": []}
     ok = True
@@ -118,9 +163,11 @@ def _refresh_once():
             _state["status"] = "live"
             _state["periods"] = new_periods
             _state["updated"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            _log("state updated -> LIVE")
         else:
             if _state["status"] != "live":
                 _state["status"] = "error"
+            _log("refresh incomplete -> data not fully available")
 
 
 def _background_loop():
