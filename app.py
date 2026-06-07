@@ -46,6 +46,8 @@ _state = {
     "periods": {"1D": [], "1W": [], "1M": []},
 }
 _started = False
+_refreshing = False
+_last_refresh = 0.0
 
 
 def _log(msg):
@@ -170,12 +172,34 @@ def _refresh_once():
             _log("refresh incomplete -> data not fully available")
 
 
+def _run_refresh():
+    global _refreshing, _last_refresh
+    try:
+        _refresh_once()
+    except Exception as e:
+        _log(f"refresh error: {type(e).__name__}: {e}")
+    finally:
+        _last_refresh = time.monotonic()
+        with _lock:
+            _refreshing = False
+
+
+def _maybe_refresh(force=False):
+    global _refreshing
+    now = time.monotonic()
+    with _lock:
+        if _refreshing:
+            return
+        stale = (_state["status"] != "live") or (now - _last_refresh > REFRESH_SECONDS)
+        if not force and not stale:
+            return
+        _refreshing = True
+    threading.Thread(target=_run_refresh, daemon=True).start()
+
+
 def _background_loop():
     while True:
-        try:
-            _refresh_once()
-        except Exception:
-            pass
+        _maybe_refresh(force=True)
         time.sleep(REFRESH_SECONDS)
 
 
@@ -184,17 +208,18 @@ def _start_background():
     if _started:
         return
     _started = True
-    thread = threading.Thread(target=_background_loop, daemon=True)
-    thread.start()
+    threading.Thread(target=_background_loop, daemon=True).start()
 
 
 @app.route("/")
 def index():
+    _maybe_refresh()
     return render_template("index.html")
 
 
 @app.route("/api/data")
 def api_data():
+    _maybe_refresh()
     with _lock:
         return jsonify({
             "status": _state["status"],
