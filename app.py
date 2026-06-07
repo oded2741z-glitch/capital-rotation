@@ -26,7 +26,7 @@ SECTORS = [
 
 PERIOD_DAYS = {"1D": 1, "1W": 7, "1M": 30}
 
-REFRESH_SECONDS = 15 * 60
+REFRESH_SECONDS = 60 * 60
 
 YAHOO_HOSTS = [
     "https://query1.finance.yahoo.com",
