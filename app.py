@@ -48,6 +48,7 @@ _state = {
 _started = False
 _refreshing = False
 _last_refresh = 0.0
+_refresh_started = 0.0
 
 
 def _log(msg):
@@ -62,14 +63,14 @@ def _build_session():
         ("Accept", "text/html,application/json,*/*"),
         ("Accept-Language", "en-US,en;q=0.9"),
     ]
-    for u in ("https://fc.yahoo.com", "https://finance.yahoo.com"):
+    for u in ("https://fc.yahoo.com",):
         try:
-            opener.open(u, timeout=15).read()
+            opener.open(u, timeout=8).read()
         except Exception:
             pass
     crumb = None
     try:
-        r = opener.open("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=15)
+        r = opener.open("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=8)
         crumb = r.read().decode("utf-8").strip()
     except Exception as e:
         _log(f"crumb request failed: {type(e).__name__}: {e}")
@@ -88,7 +89,7 @@ def _fetch_raw(ticker, opener, crumb):
     for host in YAHOO_HOSTS:
         url = host + path
         try:
-            with opener.open(url, timeout=15) as resp:
+            with opener.open(url, timeout=10) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
             result = payload["chart"]["result"][0]
             timestamps = result["timestamp"]
@@ -184,17 +185,24 @@ def _run_refresh():
             _refreshing = False
 
 
-def _maybe_refresh(force=False):
-    global _refreshing
+def _maybe_refresh(force=False, blocking=False):
+    global _refreshing, _refresh_started
     now = time.monotonic()
     with _lock:
+        if _refreshing and (now - _refresh_started) > 90:
+            _log("previous refresh looked stuck -> resetting flag")
+            _refreshing = False
         if _refreshing:
             return
         stale = (_state["status"] != "live") or (now - _last_refresh > REFRESH_SECONDS)
         if not force and not stale:
             return
         _refreshing = True
-    threading.Thread(target=_run_refresh, daemon=True).start()
+        _refresh_started = now
+    if blocking:
+        _run_refresh()
+    else:
+        threading.Thread(target=_run_refresh, daemon=True).start()
 
 
 def _background_loop():
@@ -219,7 +227,9 @@ def index():
 
 @app.route("/api/data")
 def api_data():
-    _maybe_refresh()
+    with _lock:
+        have_data = _state["status"] == "live"
+    _maybe_refresh(blocking=not have_data)
     with _lock:
         return jsonify({
             "status": _state["status"],
