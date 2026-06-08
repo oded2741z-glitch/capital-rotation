@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import http.cookiejar
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, send_from_directory
 
 SECTORS = [
     ("XLK", "Technology"),
@@ -223,6 +223,31 @@ def _start_background():
 def index():
     _maybe_refresh()
     return render_template("index.html")
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
+
+
+@app.route("/favicon.svg")
+def favicon():
+    return send_from_directory("static", "favicon.svg", mimetype="image/svg+xml")
+
+
+@app.route("/sitemap.xml")
+def sitemap():
+    return send_from_directory("static", "sitemap.xml", mimetype="application/xml")
+
+
+@app.route("/robots.txt")
+def robots():
+    return send_from_directory("static", "robots.txt", mimetype="text/plain")
 
 
 @app.route("/api/data")
