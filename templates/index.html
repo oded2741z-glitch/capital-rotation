@@ -149,6 +149,17 @@
 const PLABEL={"1D":"1 Day","1W":"1 Week","1M":"1 Month"};
 let period="1M";
 let cache={"1D":[],"1W":[],"1M":[]};
+let childCache={"1D":{},"1W":{},"1M":{}};
+let expanded={};
+
+function childrenOf(ticker){
+  const m=childCache[period]||{};
+  return (m[ticker]||[]);
+}
+function toggleSector(ticker){
+  expanded[ticker]=!expanded[ticker];
+  render(cache[period]||[]);
+}
 
 function show(which){
   document.getElementById("loading").classList.toggle("on", which==="loading");
@@ -162,6 +173,7 @@ function setState(kind){
 }
 function setPeriod(p){
   period=p;
+  expanded={};
   document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.p===p));
   if(cache[p] && cache[p].length) render(cache[p]);
 }
@@ -171,7 +183,7 @@ async function poll(){
     const r=await fetch("/api/data",{cache:"no-store"});
     const d=await r.json();
     if(d.status==="live" && d.periods){
-      cache=d.periods; setState("live");
+      cache=d.periods; childCache=d.children||{"1D":{},"1W":{},"1M":{}}; setState("live");
       if(d.updated) document.getElementById("updated").textContent="Updated "+d.updated;
       render(cache[period]||[]); show("content");
     }else if(d.status==="error"){ setState("err"); show("error"); }
@@ -216,30 +228,62 @@ function render(data){
   if(!data||!data.length) return;
   document.getElementById("interp").innerHTML = interpretation(data);
   const svg=document.getElementById("funnel"); svg.innerHTML="";
-  const L=layers(data);
-  const H=L.length?L[0].H:506;
-  L.forEach(o=>{
-    const {it,i,hw,nhw,yt,yb,my,cx}=o;
+  const W=900, cx=W/2, top0=8, lh=44, maxHW=W*0.47, minHW=W*0.055;
+  const sorted=[...data].sort((a,b)=>b.pct-a.pct);
+  const n=sorted.length;
+
+  let y=top0; let delay=0;
+  sorted.forEach((it,i)=>{
+    const ratio=1-i/n, hw=minHW+(maxHW-minHW)*ratio;
+    const nratio=1-(i+1)/n, nhw=minHW+(maxHW-minHW)*nratio;
+    const yt=y, yb=y+lh, my=(yt+yb)/2;
     const c=colorFor(it.pct);
-    const g=el("g",{class:"lyr",style:`animation-delay:${(i*0.05).toFixed(2)}s`});
+    const kids=childrenOf(it.ticker);
+    const hasKids=kids.length>0;
+    const isOpen=!!expanded[it.ticker];
+
+    const g=el("g",{class:"lyr",style:`animation-delay:${(delay+=0.04).toFixed(2)}s`});
+    if(hasKids){ g.setAttribute("style",g.getAttribute("style")+";cursor:pointer"); g.addEventListener("click",()=>toggleSector(it.ticker)); }
     const pts=`${cx-hw},${yt} ${cx+hw},${yt} ${cx+nhw},${yb} ${cx-nhw},${yb}`;
     g.appendChild(el("polygon",{points:pts,fill:c.fill,stroke:c.stroke,"stroke-width":"1.2"}));
     const ps=it.pct>=0?`+${it.pct.toFixed(1)}%`:`${it.pct.toFixed(1)}%`;
     const pcol=it.pct>=0?"#2E7D4F":"#B23A1E";
+    const caret=hasKids?(isOpen?"▾ ":"▸ "):"";
     if(hw>150){
       txt(g,cx-hw*0.72,my,roman(i+1),"#9A8F78",17,500,"'Playfair Display',serif","middle");
-      txt(g,cx-hw*0.50,my,it.ticker,"#1A1714",17,600,"'IBM Plex Mono',monospace","start");
+      txt(g,cx-hw*0.50,my,caret+it.ticker,"#1A1714",17,600,"'IBM Plex Mono',monospace","start");
       txt(g,cx-hw*0.05,my,it.name,"#5A5246",15,400,"'Spectral',serif","start");
       txt(g,cx+hw*0.78,my,ps,pcol,30,700,"'Playfair Display',serif","end");
     }else if(hw>85){
-      txt(g,cx-hw*0.55,my,it.ticker,"#1A1714",14,600,"'IBM Plex Mono',monospace","start");
+      txt(g,cx-hw*0.55,my,caret+it.ticker,"#1A1714",14,600,"'IBM Plex Mono',monospace","start");
       txt(g,cx+hw*0.72,my,ps,pcol,22,700,"'Playfair Display',serif","end");
     }else{
-      txt(g,cx,my,`${it.ticker}  ${ps}`,pcol,13,600,"'IBM Plex Mono',monospace","middle");
+      txt(g,cx,my,`${caret}${it.ticker}  ${ps}`,pcol,13,600,"'IBM Plex Mono',monospace","middle");
     }
     svg.appendChild(g);
+    y=yb;
+
+    if(hasKids && isOpen){
+      const rowH=30, pad=6, bw=W*0.46, bx=cx-bw/2;
+      y+=pad;
+      [...kids].sort((a,b)=>b.pct-a.pct).forEach(k=>{
+        const kc=colorFor(k.pct);
+        const kg=el("g",{class:"lyr",style:`animation-delay:${(delay+=0.03).toFixed(2)}s`});
+        kg.appendChild(el("rect",{x:bx,y:y,width:bw,height:rowH-4,fill:kc.fill,stroke:kc.stroke,"stroke-width":"1","rx":"1"}));
+        const kmy=y+(rowH-4)/2;
+        const kps=k.pct>=0?`+${k.pct.toFixed(1)}%`:`${k.pct.toFixed(1)}%`;
+        const kpcol=k.pct>=0?"#2E7D4F":"#B23A1E";
+        txt(kg,bx+16,kmy,k.ticker,"#1A1714",12,600,"'IBM Plex Mono',monospace","start");
+        txt(kg,bx+78,kmy,k.name,"#5A5246",12,400,"'Spectral',serif","start");
+        txt(kg,bx+bw-14,kmy,kps,kpcol,15,700,"'Playfair Display',serif","end");
+        svg.appendChild(kg);
+        y+=rowH;
+      });
+      y+=pad+2;
+    }
   });
-  svg.setAttribute("viewBox",`0 0 900 ${H}`);
+
+  svg.setAttribute("viewBox",`0 0 900 ${y+6}`);
 }
 function roman(n){const m=[["X",10],["IX",9],["V",5],["IV",4],["I",1]];let s="";for(const[r,v]of m){while(n>=v){s+=r;n-=v;}}return s;}
 
