@@ -24,6 +24,42 @@ SECTORS = [
     ("XLE", "Energy"),
 ]
 
+INDUSTRIES = [
+    ("SMH", "Semiconductors"),
+    ("IGV", "Tech-Software"),
+    ("FDN", "Internet"),
+    ("IBB", "Biotech"),
+    ("OIH", "Oil Services"),
+    ("XOP", "Oil & Gas E&P"),
+    ("AMLP", "MLP / Midstream"),
+    ("KRE", "Regional Banks"),
+    ("KIE", "Insurance"),
+    ("GDX", "Gold Miners"),
+    ("XME", "Metals & Mining"),
+    ("MOO", "Agribusiness"),
+    ("JETS", "Airlines"),
+    ("VNQ", "Real Estate"),
+    ("XRT", "Retail"),
+    ("ITB", "Home Construction"),
+    ("PHO", "Water"),
+    ("TAN", "Solar"),
+    ("PBW", "Clean Energy"),
+]
+
+SECTOR_CHILDREN = {
+    "XLK": ["SMH", "IGV", "FDN"],
+    "XLE": ["OIH", "XOP", "AMLP"],
+    "XLF": ["KRE", "KIE"],
+    "XLV": ["IBB"],
+    "XLB": ["GDX", "XME", "MOO"],
+    "XLI": ["JETS"],
+    "XLRE": ["VNQ"],
+    "XLY": ["XRT", "ITB"],
+    "XLU": ["PHO", "TAN", "PBW"],
+}
+
+INDUSTRY_NAME = {t: n for t, n in INDUSTRIES}
+
 PERIOD_DAYS = {"1D": 1, "1W": 7, "1M": 30}
 
 REFRESH_SECONDS = 60 * 60
@@ -44,6 +80,7 @@ _state = {
     "status": "loading",
     "updated": None,
     "periods": {"1D": [], "1W": [], "1M": []},
+    "children": {"1D": {}, "1W": {}, "1M": {}},
 }
 _started = False
 _refreshing = False
@@ -145,9 +182,18 @@ def _refresh_once():
         raws[ticker] = _fetch_raw(ticker, opener, crumb)
         if raws[ticker]:
             ok_count += 1
-    _log(f"fetched {ok_count}/{len(SECTORS)} tickers")
+    _log(f"fetched {ok_count}/{len(SECTORS)} sector tickers")
+
+    # industries are best-effort: a failure here must NOT break the site
+    ind_ok = 0
+    for ticker, name in INDUSTRIES:
+        raws[ticker] = _fetch_raw(ticker, opener, crumb)
+        if raws[ticker]:
+            ind_ok += 1
+    _log(f"fetched {ind_ok}/{len(INDUSTRIES)} industry tickers")
 
     new_periods = {"1D": [], "1W": [], "1M": []}
+    new_children = {"1D": {}, "1W": {}, "1M": {}}
     ok = True
     for period, days in PERIOD_DAYS.items():
         rows = []
@@ -161,10 +207,24 @@ def _refresh_once():
             break
         new_periods[period] = rows
 
+        # build drill-down children (best-effort; skip any ETF without data)
+        kids = {}
+        for sector_ticker, child_ids in SECTOR_CHILDREN.items():
+            items = []
+            for cid in child_ids:
+                cpct = _pct_from_closes(raws.get(cid), days)
+                if cpct is None:
+                    continue
+                items.append({"ticker": cid, "name": INDUSTRY_NAME.get(cid, cid), "pct": round(cpct, 2)})
+            if items:
+                kids[sector_ticker] = items
+        new_children[period] = kids
+
     with _lock:
         if ok:
             _state["status"] = "live"
             _state["periods"] = new_periods
+            _state["children"] = new_children
             _state["updated"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             _log("state updated -> LIVE")
         else:
@@ -260,6 +320,7 @@ def api_data():
             "status": _state["status"],
             "updated": _state["updated"],
             "periods": _state["periods"],
+            "children": _state.get("children", {"1D": {}, "1W": {}, "1M": {}}),
         })
 
 
